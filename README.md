@@ -62,6 +62,8 @@ Green is the reset (NRST) and you need to connect this to the C45 capacitor.
 <img width="593" height="400" alt="5" src="https://github.com/user-attachments/assets/5c747751-9676-495f-b44c-c469b1063764" />
 <img width="710" height="400" alt="6" src="https://github.com/user-attachments/assets/a6fcaec9-7326-4076-884b-670c0e14332d" />
 <img width="365" height="400" alt="7" src="https://github.com/user-attachments/assets/53c5ccf4-cc61-4ab3-935c-187bc2bd4bfe" />
+<img width="1428" height="964" alt="image" src="https://github.com/user-attachments/assets/d591110c-1ac4-4e9c-849d-8442738f4258" />
+
 <br /><br />
 
 Connection sequence:  
