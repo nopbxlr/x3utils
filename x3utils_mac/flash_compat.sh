@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_FILE="$SCRIPT_DIR/config.sh"
 
 if [[ ! -f "$CONFIG_FILE" ]]; then
-    echo "[FAIL] Missing config.sh"
+    echo -e "[${CL_R}FAIL${CL_NC}] Missing config.sh"
     exit 1
 fi
 
@@ -16,11 +16,11 @@ source "$CONFIG_FILE"
 while true; do
     read -rp "Do you want to flash SHU compatible? [Y/N]: " user_choice
 
-    case "$user_choice" in
-        [Yy]|[Yy][Ee][Ss])
+    case "${user_choice,,}" in
+        y|yes)
             break
             ;;
-        [Nn]|[Nn][Oo])
+        n|no)
             echo
             echo "Flash cancelled by user."
             echo
@@ -35,13 +35,13 @@ while true; do
     esac
 done
 
-# Set up cmp directory
-cmp_dir="$SCRIPT_DIR/cmp"
+# Set up compat directory
+compat_dir="$SCRIPT_DIR/compat"
 
-if [[ ! -d "$cmp_dir" ]]; then
-    mkdir -p "$cmp_dir" || {
+if [[ ! -d "$compat_dir" ]]; then
+    mkdir -p "$compat_dir" || {
         echo
-        echo "[FAIL] Failed to create cmp directory."
+        echo -e "[${CL_R}FAIL${CL_NC}] Failed to create compat directory."
         exit 1
     }
 fi
@@ -51,13 +51,13 @@ timestamp=$(date +"%Y-%m-%d_%H-%M-%S")
 
 if [[ -z "$timestamp" ]]; then
     echo
-    echo "[FAIL] Failed to generate timestamp."
+    echo -e "[${CL_R}FAIL${CL_NC}] Failed to generate timestamp."
     exit 1
 fi
 
 # Build file paths
-raw_dump="$cmp_dir/dump_${timestamp}.bin"
-patched_dump="$cmp_dir/dump_${timestamp}_patched.bin"
+raw_dump="$compat_dir/dump_${timestamp}.bin"
+patched_dump="$compat_dir/dump_${timestamp}_patched.bin"
 
 echo
 echo "======================================================="
@@ -73,18 +73,26 @@ echo
 # If the target is read-protected, dumping should fail
 # safely without erasing firmware contents.
 
-"$OPENOCD_BIN" -s "$SCRIPTS_DIR" \
-    -f "$INTERFACE" \
-    -f "$TARGET" \
-    -c "init" \
-    -c "reset halt" \
-    -c "flash probe 0" \
-    -c "dump_image $raw_dump 0x08000000 0x20000" \
-    -c "exit"
+if [[ "$TARGET" == "target/at32f415xx_c45.cfg" ]]; then
+    "$OPENOCD_BIN" -s "$SCRIPTS_DIR" -d0 \
+        -f "$TARGET" \
+        -c "guided_connect {$CONNECT_TIMEOUT}" \
+        -c "dump_image {$raw_dump} 0x08000000 0x20000" \
+        -c "exit"
+else
+    "$OPENOCD_BIN" -s "$SCRIPTS_DIR" -d0 \
+        -f "$INTERFACE" \
+        -f "$TARGET" \
+        -c "init" \
+        -c "reset halt" \
+        -c "flash probe 0" \
+        -c "dump_image {$raw_dump} 0x08000000 0x20000" \
+        -c "exit"
+fi
 
 if [[ $? -ne 0 ]]; then
     echo
-    echo "[FAIL] OpenOCD failed during memory dump."
+    echo -e "[${CL_R}FAIL${CL_NC}] OpenOCD failed during memory dump."
     echo "Check:"
     echo "       ST-Link connection"
     echo "       Board power"
@@ -95,7 +103,7 @@ fi
 # Ensure dump exists
 if [[ ! -f "$raw_dump" ]]; then
     echo
-    echo "[FAIL] Raw dump file was not created."
+    echo -e "[${CL_R}FAIL${CL_NC}] Raw dump file was not created."
     exit 1
 fi
 
@@ -104,13 +112,24 @@ dump_size=$(stat -f%z "$raw_dump")
 
 if [[ "$dump_size" != "$EXPECTED_SIZE" ]]; then
     echo
-    echo "[FAIL] Raw dump integrity verification failed."
+    echo -e "[${CL_R}FAIL${CL_NC}] Raw dump integrity verification failed."
     echo "       Expected: $EXPECTED_SIZE bytes"
     echo "       Actual:   $dump_size bytes"
     exit 1
 fi
 
-echo "[ OK ] Raw dump verified successfully."
+# Ensure dump file is not all the same byte value
+unique_bytes=$(od -An -tx1 "$raw_dump" | tr -s ' \n' '\n' | grep -E '^[0-9a-f]{2}$' | sort -u | wc -l)
+
+if [ "$unique_bytes" -eq 1 ]; then
+    echo
+    echo -e "[${CL_R}FAIL${CL_NC}] Dump file contains only a single repeated byte value."
+    echo "       nRST was not released correctly during step 2."
+    echo "       Please try again."
+    exit 1
+fi
+
+echo -e "[ ${CL_G}OK${CL_NC} ] Raw dump verified successfully."
 echo
 read -rp "Press ENTER to continue..."
 
@@ -150,14 +169,14 @@ EOF
 
 if [[ $? -ne 0 ]]; then
     echo
-    echo "[FAIL] Binary patch process failed."
+    echo -e "[${CL_R}FAIL${CL_NC}] Binary patch process failed."
     exit 1
 fi
 
 # Ensure patched file exists
 if [[ ! -f "$patched_dump" ]]; then
     echo
-    echo "[FAIL] Patched dump file was not created."
+    echo -e "[${CL_R}FAIL${CL_NC}] Patched dump file was not created."
     exit 1
 fi
 
@@ -166,13 +185,13 @@ patched_size=$(stat -f%z "$patched_dump")
 
 if [[ "$patched_size" != "$EXPECTED_SIZE" ]]; then
     echo
-    echo "[FAIL] Patched binary integrity verification failed."
+    echo -e "[${CL_R}FAIL${CL_NC}] Patched binary integrity verification failed."
     echo "       Expected: $EXPECTED_SIZE bytes"
     echo "       Actual:   $patched_size bytes"
     exit 1
 fi
 
-echo "[ OK ] Patch injection completed successfully."
+echo -e "[ ${CL_G}OK${CL_NC} ] Patch injection completed successfully."
 echo
 read -rp "Press ENTER to continue..."
 
@@ -186,20 +205,29 @@ echo
 # Still no unlock operation.
 # We assume the target is not read-protected.
 
-"$OPENOCD_BIN" -s "$SCRIPTS_DIR" \
-    -f "$INTERFACE" \
-    -f "$TARGET" \
-    -c "init" \
-    -c "reset halt" \
-    -c "flash erase_address 0x08000000 0x20000" \
-    -c "flash write_bank 0 $patched_dump" \
-    -c "verify_image $patched_dump 0x08000000" \
-    -c "reset run" \
-    -c "exit"
+if [[ "$TARGET" == "target/at32f415xx_c45.cfg" ]]; then
+    "$OPENOCD_BIN" -s "$SCRIPTS_DIR" -d0 \
+        -f "$TARGET" \
+        -c "guided_flash_connect {$CONNECT_TIMEOUT}" \
+        -c "flash erase_address 0x08000000 0x20000" \
+        -c "flash write_bank 0 {$patched_dump}" \
+        -c "verify_image {$patched_dump} 0x08000000" \
+        -c "exit"
+else
+    "$OPENOCD_BIN" -s "$SCRIPTS_DIR" -d0 \
+        -f "$INTERFACE" \
+        -f "$TARGET" \
+        -c "init" \
+        -c "reset halt" \
+        -c "flash erase_address 0x08000000 0x20000" \
+        -c "flash write_bank 0 {$patched_dump}" \
+        -c "verify_image {$patched_dump} 0x08000000" \
+        -c "exit"
+fi
 
 if [[ $? -ne 0 ]]; then
     echo
-    echo "[FAIL] OpenOCD failed during flashing."
+    echo -e "[${CL_R}FAIL${CL_NC}] OpenOCD failed during flashing."
     echo "Check:"
     echo "       ST-Link connection"
     echo "       Board power"
@@ -208,6 +236,8 @@ if [[ $? -ne 0 ]]; then
 fi
 
 echo
-echo "[ OK ] Flashing completed successfully!"
+echo -e "[ ${CL_G}OK${CL_NC} ] Flashing completed successfully!"
+echo
 echo
 read -rp "Press ENTER to continue..."
+echo
