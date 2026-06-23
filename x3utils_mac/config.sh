@@ -17,7 +17,7 @@ OPENOCD_BIN="$SCRIPT_DIR/xpack-openocd-0.12.0-7-darwin-x64/bin/openocd"
 SCRIPTS_DIR="$SCRIPT_DIR/xpack-openocd-0.12.0-7-darwin-x64/openocd/scripts"
 
 INTERFACE="interface/stlink.cfg"
-TARGET="target/artery/at32f4x.cfg"
+TARGET="target/artery/at32f4x_c45.cfg"
 
 CONNECT_TIMEOUT=3
 
