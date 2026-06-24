@@ -1,7 +1,7 @@
 # Auto detect text files and perform LF normalization
 * text=auto
 
-# Bundled OpenOCD scripts
+# Bundled OpenOCD scripts/binaries — vendored, excluded from Linguist stats and diffs
 x3utils_linux/oocd/** linguist-vendored
 x3utils_mac/xpack-openocd-*/** linguist-vendored
 x3utils_win/oocd/** linguist-vendored
