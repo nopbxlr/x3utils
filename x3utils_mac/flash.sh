@@ -139,7 +139,7 @@ echo
 # TCL curly brace quoting as a defensive measure against any special characters in the path.
 
 if [[ "$TARGET" == "target/artery/at32f4x_c45.cfg" ]]; then
-    "$OPENOCD_BIN" -s "$SCRIPTS_DIR" -do \
+    "$OPENOCD_BIN" -s "$SCRIPTS_DIR" -d0 \
         -f "$TARGET" \
         -c "guided_flash_connect {$CONNECT_TIMEOUT}" \
         -c "flash erase_address 0x08000000 0x20000" \

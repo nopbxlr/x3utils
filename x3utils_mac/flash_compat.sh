@@ -130,8 +130,15 @@ if [ "$unique_bytes" -eq 1 ]; then
     exit 1
 fi
 
-echo -e "[ ${CL_G}OK${CL_NC} ] Raw dump verified successfully."
 echo
+echo -e "[ ${CL_G}OK${CL_NC} ] Raw dump verified successfully."
+
+mkdir -p "$HOME/Library/Application Support/x3utils_backup"
+cp "$raw_dump" "$HOME/Library/Application Support/x3utils_backup/dump_${timestamp}.bin"
+echo -e "[ ${CL_G}OK${CL_NC} ] Secondary backup stored in:"
+echo "       \"$HOME/Library/Application Support/x3utils_backup/dump_${timestamp}.bin\""
+echo
+
 read -rp "Press ENTER to continue..."
 
 echo
