@@ -15,8 +15,9 @@ source "$CONFIG_FILE"
 # Prompt user confirmation
 while true; do
     read -rp "Do you want to flash SHU compatible? [Y/N]: " user_choice
+    user_choice_lc="$(echo "$user_choice" | tr '[:upper:]' '[:lower:]')"
 
-    case "${user_choice,,}" in
+    case "${user_choice_lc}" in
         y|yes)
             break
             ;;

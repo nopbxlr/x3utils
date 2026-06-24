@@ -25,8 +25,9 @@ bin_file=$(basename "$bin_file_path")
 # Prompt confirmation
 while true; do
     read -rp "Do you want to flash [$bin_file]? [Y/N]: " user_choice
+    user_choice_lc="$(echo "$user_choice" | tr '[:upper:]' '[:lower:]')"
 
-    case "${user_choice,,}" in
+    case "$user_choice_lc" in
         y|yes)
             break
             ;;
@@ -71,7 +72,7 @@ echo
 # Still no unlock operation.
 # We assume the target is not read-protected.
 
-if [[ "$TARGET" == "target/at32f415xx_c45.cfg" ]]; then
+if [[ "$TARGET" == "target/artery/at32f4x_c45.cfg" ]]; then
     "$OPENOCD_BIN" -s "$SCRIPTS_DIR" -d0 \
         -f "$TARGET" \
         -c "guided_flash_connect {$CONNECT_TIMEOUT}" \
