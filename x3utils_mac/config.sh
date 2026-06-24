@@ -13,8 +13,26 @@ export CL_C="\033[1;36m"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-OPENOCD_BIN="$SCRIPT_DIR/xpack-openocd-0.12.0-7-darwin-x64/bin/openocd"
-SCRIPTS_DIR="$SCRIPT_DIR/xpack-openocd-0.12.0-7-darwin-x64/openocd/scripts"
+# --- ARCHITECTURE DETECTION ---
+# Picks the correct bundled xpack-openocd build for this Mac.
+# Mirrors the detection in installer.sh -- keep both in sync.
+ARCH="$(uname -m)"
+
+case "$ARCH" in
+    arm64)
+        OPENOCD_ROOT="$SCRIPT_DIR/xpack-openocd-0.12.0-7-darwin-arm64"
+        ;;
+    x86_64)
+        OPENOCD_ROOT="$SCRIPT_DIR/xpack-openocd-0.12.0-7-darwin-x64"
+        ;;
+    *)
+        echo -e "[${CL_R}FAIL${CL_NC}] Unsupported architecture: $ARCH"
+        exit 1
+        ;;
+esac
+
+OPENOCD_BIN="$OPENOCD_ROOT/bin/openocd"
+SCRIPTS_DIR="$OPENOCD_ROOT/openocd/scripts"
 
 INTERFACE="interface/stlink.cfg"
 TARGET="target/artery/at32f4x_c45.cfg"
