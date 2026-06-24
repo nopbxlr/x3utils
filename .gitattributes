@@ -5,3 +5,8 @@
 x3utils_linux/oocd/** linguist-vendored
 x3utils_mac/xpack-openocd-*/** linguist-vendored
 x3utils_win/oocd/** linguist-vendored
+
+# # Bundled OpenOCD scripts/binaries — vendored, excluded from Linguist stats and diffs
+# x3utils_linux/oocd/** linguist-vendored -text
+# x3utils_mac/xpack-openocd-*/** linguist-vendored -text
+# x3utils_win/oocd/** linguist-vendored -text
