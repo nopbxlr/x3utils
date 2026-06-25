@@ -99,6 +99,7 @@ if [[ $? -ne 0 ]]; then
 fi
 
 echo
+echo
 echo -e "[ ${CL_G}OK${CL_NC} ] Flashing completed and verified successfully!"
 echo
 echo

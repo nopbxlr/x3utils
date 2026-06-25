@@ -244,8 +244,10 @@ if [[ $? -ne 0 ]]; then
 fi
 
 echo
+echo
 echo -e "[ ${CL_G}OK${CL_NC} ] Flashing completed successfully!"
 echo
 echo
 read -rp "Press ENTER to continue..."
 echo
+ß

@@ -51,7 +51,7 @@ echo "       \"$dump_file\""
 echo
 
 echo "======================================================="
-echo "        Executing Full 128 KB Memory Dump..."
+echo "          Executing Full 128 KB Memory Dump..."
 echo "======================================================="
 echo
 
