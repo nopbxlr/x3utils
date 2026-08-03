@@ -1,39 +1,39 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:x3utils_flutter/app_controller.dart';
-import 'package:x3utils_flutter/engine/openocd_paths.dart';
-import 'package:x3utils_flutter/engine/openocd_runner.dart';
+import 'package:x3utils_flutter/engine/backend_paths.dart';
+import 'package:x3utils_flutter/engine/flash_runner.dart';
 import 'package:x3utils_flutter/models.dart';
 
 /// Replays scripted OpenOCD output instead of launching a process, so the
 /// auto-retry gate can be exercised without hardware. Both entry points are
 /// overridden — an un-overridden runRace would start a real openocd.
-class _ScriptedRunner extends OpenOcdRunner {
+class _ScriptedRunner extends FlashRunner {
   _ScriptedRunner({required this.lines, required this.exitCode})
-    : super(OpenOcdPaths('openocd', 'scripts'));
+    : super(BackendPaths('openocd', 'scripts'));
 
   final List<String> lines;
   final int exitCode;
   int runs = 0;
 
-  OpenOcdResult _replay(void Function(String) onLine) {
+  FlashResult _replay(void Function(String) onLine) {
     runs++;
-    final evidence = OpenOcdEvidence();
+    final evidence = FlashEvidence();
     for (final line in lines) {
       evidence.record(line);
       onLine(line);
     }
-    return OpenOcdResult(exitCode, evidence);
+    return FlashResult(exitCode, evidence);
   }
 
   @override
-  Future<OpenOcdResult> run(
+  Future<FlashResult> run(
     List<String> args,
     void Function(String line) onLine,
   ) async => _replay(onLine);
 
   @override
-  Future<OpenOcdResult> runRace(
+  Future<FlashResult> runRace(
     List<String> args, {
     required void Function(String line) onLine,
     required void Function(int attempt, RaceTier tier) onAttempt,

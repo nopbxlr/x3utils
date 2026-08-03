@@ -126,3 +126,12 @@ if(NOT CMAKE_BUILD_TYPE MATCHES "Debug")
   install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
     COMPONENT Runtime)
 endif()
+
+# Bundle libusb-1.0 into lib/ (on the app's RPATH) so the ST-Link USB transport
+# can load it in both debug (flutter run) and release. Provide the file at
+# linux/libusb-1.0.so.0 (see NATIVE.md); no-op if absent. System libusb-1.0-0
+# also works without this.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libusb-1.0.so.0")
+  install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/libusb-1.0.so.0"
+    DESTINATION "${INSTALL_BUNDLE_LIB_DIR}" COMPONENT Runtime)
+endif()

@@ -9,8 +9,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:x3utils_flutter/app_controller.dart';
 import 'package:x3utils_flutter/engine/firmware.dart';
 import 'package:x3utils_flutter/engine/ninebot_tea.dart';
-import 'package:x3utils_flutter/engine/openocd_paths.dart';
-import 'package:x3utils_flutter/engine/openocd_runner.dart';
+import 'package:x3utils_flutter/engine/backend_paths.dart';
+import 'package:x3utils_flutter/engine/flash_runner.dart';
 import 'package:x3utils_flutter/engine/pack_zip3.dart';
 import 'package:x3utils_flutter/models.dart';
 
@@ -802,7 +802,7 @@ void main() {
     final controller = AppController();
     addTearDown(controller.dispose);
 
-    expect(Firmware.validateOpenOcdPath(full.path).ok, isFalse);
+    expect(Firmware.validateFlashPath(full.path).ok, isFalse);
     controller.selectAction('make_zip3');
     expect(controller.selectFirmwareBin(full.path).ok, isTrue);
 
@@ -899,8 +899,8 @@ void main() {
     bytes.setRange(0x1400, 0x1400 + banner.length, banner.codeUnits);
     final firmware = File(p.join(temp.path, 'firmware.bin'))
       ..writeAsBytesSync(bytes);
-    final inertRunner = OpenOcdRunner(
-      OpenOcdPaths('/not-a-real-openocd', '/not-a-real-scripts'),
+    final inertRunner = FlashRunner(
+      BackendPaths('/not-a-real-openocd', '/not-a-real-scripts'),
     );
     final controller = AppController(runner: inertRunner);
     addTearDown(controller.dispose);
@@ -953,21 +953,21 @@ void main() {
   });
 }
 
-class _SuccessfulFlashRunner extends OpenOcdRunner {
+class _SuccessfulFlashRunner extends FlashRunner {
   _SuccessfulFlashRunner()
-    : super(OpenOcdPaths('/not-a-real-openocd', '/not-a-real-scripts'));
+    : super(BackendPaths('/not-a-real-openocd', '/not-a-real-scripts'));
 
   @override
-  Future<OpenOcdResult> run(
+  Future<FlashResult> run(
     List<String> args,
     void Function(String line) onLine,
   ) async {
-    final evidence = OpenOcdEvidence();
+    final evidence = FlashEvidence();
     for (final line in ['wrote 131072 bytes', 'verified 131072 bytes']) {
       evidence.record(line);
       onLine(line);
     }
-    return OpenOcdResult(0, evidence);
+    return FlashResult(0, evidence);
   }
 }
 

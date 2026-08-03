@@ -106,3 +106,11 @@ install(DIRECTORY "${PROJECT_BUILD_DIR}/${FLUTTER_ASSET_DIR_NAME}"
 install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   CONFIGURATIONS Profile;Release
   COMPONENT Runtime)
+
+# Bundle libusb-1.0 next to the executable so the ST-Link USB transport can load
+# it in both debug (flutter run) and release. Provide the file at
+# windows/libusb-1.0.dll (see NATIVE.md); this is a no-op if it is absent.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libusb-1.0.dll")
+  install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/libusb-1.0.dll"
+    DESTINATION "${INSTALL_BUNDLE_LIB_DIR}" COMPONENT Runtime)
+endif()

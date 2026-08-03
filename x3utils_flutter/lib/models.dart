@@ -6,7 +6,7 @@ import 'theme.dart';
 // The GUI carries no A/B/C/D tag. The CLI launchers still letter their menus,
 // and the GUI's rail order deliberately differs from them, so a letter here
 // would assert a mapping the scripts contradict. Modes are identified by title,
-// icon and `kModeOrder`; the GUI passes `Cfg.target(mode)`, never a letter.
+// icon and `kModeOrder`; the GUI passes the mode object, never a letter.
 enum ConnectionMode { defaultSwd, cloneC45, genuineC45, powerRace }
 
 /// Canonical rail/dropdown order, independent of the persisted enum order.
@@ -140,7 +140,7 @@ class FlashAction {
   });
 }
 
-/// Actions mirror design/flash-studio.html; wired to the frozen oocd later.
+/// Actions mirror design/flash-studio.html; wired to the ST-Link backend.
 const kActions = <FlashAction>[
   // ── Standard ──────────────────────────────────────────────
   FlashAction(

@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'io/io.dart';
 
 typedef ConfirmFileReplace = Future<bool> Function(String path);
 

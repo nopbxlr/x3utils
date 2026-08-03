@@ -1,9 +1,10 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:file_selector/file_selector.dart';
+import 'engine/io/file_pick.dart';
 import 'app_controller.dart';
 import 'engine/firmware.dart';
 import 'engine/firmware_inspection.dart';
@@ -11,9 +12,14 @@ import 'engine/pack_zip3.dart';
 import 'engine/trash.dart';
 import 'models.dart';
 import 'theme.dart';
+import 'web_boot.dart';
 import 'widgets/desktop_path_display.dart';
 
-void main() => runApp(const X3UtilsApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await initWebStorage(); // no-op on native; loads the browser VFS on web
+  runApp(const X3UtilsApp());
+}
 
 class X3UtilsApp extends StatelessWidget {
   const X3UtilsApp({super.key});
@@ -28,7 +34,9 @@ class X3UtilsApp extends StatelessWidget {
           title: 'x3utils',
           debugShowCheckedModeBanner: false,
           theme: buildTheme(),
-          home: HomeScreen(), // non-const so accent changes rebuild the tree
+          // wrapHome is identity on native; on web it overlays the saved-files
+          // button. HomeScreen stays non-const so accent changes rebuild it.
+          home: wrapHome(HomeScreen()),
         );
       },
     );
@@ -832,7 +840,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                             const SizedBox(height: 4),
                             const Text(
-                              'Engine: bundled OpenOCD (frozen) · AT32F415',
+                              'Engine: ST-Link (WebUSB · libusb) · AT32F415',
                               style: TextStyle(
                                 color: AppColors.mut,
                                 fontSize: 12,
@@ -867,7 +875,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       // Enter fires the current stage's primary CTA (see _onEnter) so the
-      // guided C45 "Continue" answers OpenOCD's stdin like the CLI's Enter.
+      // guided C45 "Continue" releases the connect gate.
       body: CallbackShortcuts(
         bindings: {
           const SingleActivator(LogicalKeyboardKey.enter): _onEnter,
@@ -1112,7 +1120,7 @@ class _TitleMenu extends StatelessWidget {
               applicationName: 'x3utils',
               applicationVersion: 'v$kAppVersionLabel',
               applicationLegalese:
-                  'ST-LINK utilities for X3 scooters · AT32F415 · bundled OpenOCD',
+                  'ST-LINK utilities for X3 scooters · AT32F415',
             );
         }
       },
@@ -3308,11 +3316,11 @@ class _StatusBar extends StatelessWidget {
       child: Row(
         children: [
           _stat(
-            'OpenOCD',
-            c.openOcdStatus,
-            led: c.openOcdStatus == 'ready'
+            'Backend',
+            c.backendStatus,
+            led: c.backendStatus == 'ready'
                 ? AppColors.ok
-                : c.openOcdStatus == 'missing'
+                : c.backendStatus == 'missing'
                 ? AppColors.danger
                 : AppColors.hold,
           ),
@@ -3454,7 +3462,7 @@ class _ConsolePanelState extends State<_ConsolePanel> {
                 Icon(Icons.terminal_rounded, size: 16, color: AppColors.brand),
                 const SizedBox(width: 8),
                 const Text(
-                  'OpenOCD console',
+                  'Console',
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
                     color: AppColors.txt,
@@ -4267,18 +4275,18 @@ class _BackupSettingsSectionState extends State<_BackupSettingsSection> {
       children: [
         Row(
           children: [
-            const Expanded(
+            Expanded(
               child: Text(
-                'x3utils folder',
-                style: TextStyle(
+                kIsWeb ? 'Files' : 'x3utils folder',
+                style: const TextStyle(
                   color: AppColors.txt,
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                 ),
               ),
             ),
-            _ConsoleAction(label: 'Browse…', onTap: () => _browse()),
-            if (c.x3utilsRoot != null) ...[
+            if (!kIsWeb) _ConsoleAction(label: 'Browse…', onTap: () => _browse()),
+            if (!kIsWeb && c.x3utilsRoot != null) ...[
               const SizedBox(width: 14),
               _ConsoleAction(
                 label: 'Reset',
@@ -4302,8 +4310,11 @@ class _BackupSettingsSectionState extends State<_BackupSettingsSection> {
         const SizedBox(height: 5),
         Text(
           _rootError ??
-              'Holds backup · compat · unpacked_zip3 · packed_zip3 · logs'
-                  '${Firmware.rootIsDefault ? ' · default location' : ''}',
+              (kIsWeb
+                  ? 'Backups are saved in your browser and downloaded. Use the '
+                        '“Saved files” button (bottom-right) to re-download them.'
+                  : 'Holds backup · compat · unpacked_zip3 · packed_zip3 · logs'
+                        '${Firmware.rootIsDefault ? ' · default location' : ''}'),
           style: TextStyle(
             fontSize: 11,
             color: _rootError == null ? AppColors.mut : AppColors.danger,
@@ -4367,41 +4378,43 @@ class _BackupSettingsSectionState extends State<_BackupSettingsSection> {
             fontFamily: kMono,
           ),
         ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            const Expanded(
-              child: Text(
-                'Keep a 2nd copy',
-                style: TextStyle(
-                  color: AppColors.txt,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
+        if (!kIsWeb) ...[
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Keep a 2nd copy',
+                  style: TextStyle(
+                    color: AppColors.txt,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
-            ),
-            Transform.scale(
-              scale: 0.8,
-              alignment: Alignment.centerRight,
-              child: Switch(
-                value: c.secondCopy,
-                activeThumbColor: AppColors.brand,
-                onChanged: (v) {
-                  c.setSecondCopy(v);
-                  setState(() {});
-                },
+              Transform.scale(
+                scale: 0.8,
+                alignment: Alignment.centerRight,
+                child: Switch(
+                  value: c.secondCopy,
+                  activeThumbColor: AppColors.brand,
+                  onChanged: (v) {
+                    c.setSecondCopy(v);
+                    setState(() {});
+                  },
+                ),
               ),
-            ),
-          ],
-        ),
-        Text(
-          Firmware.secondCopyLabel,
-          style: const TextStyle(
-            color: AppColors.mut,
-            fontSize: 12,
-            fontFamily: kMono,
+            ],
           ),
-        ),
+          Text(
+            Firmware.secondCopyLabel,
+            style: const TextStyle(
+              color: AppColors.mut,
+              fontSize: 12,
+              fontFamily: kMono,
+            ),
+          ),
+        ],
         // BETA3 Windows-only bench instrument. Safe ACP validation is the
         // default; this restores unrestricted BETA2 behavior for comparison.
         if (c.windowsPathBenchAvailable) ...[
@@ -4434,7 +4447,7 @@ class _BackupSettingsSectionState extends State<_BackupSettingsSection> {
           ),
           const Text(
             'BETA3 bench switch. OFF allows only paths this PC’s Windows '
-            'code page passes to OpenOCD unchanged. ON hands non-ASCII paths '
+            'code page passes to the flasher unchanged. ON hands non-ASCII paths '
             'straight through and can silently resolve a DIFFERENT file. '
             'Braces stay refused. Every run logs the selected mode.',
             style: TextStyle(color: AppColors.mut, fontSize: 12),

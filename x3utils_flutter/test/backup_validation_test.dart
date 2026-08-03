@@ -6,8 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:x3utils_flutter/app_controller.dart';
 import 'package:x3utils_flutter/engine/device_spec.dart';
 import 'package:x3utils_flutter/engine/firmware.dart';
-import 'package:x3utils_flutter/engine/openocd_paths.dart';
-import 'package:x3utils_flutter/engine/openocd_runner.dart';
+import 'package:x3utils_flutter/engine/backend_paths.dart';
+import 'package:x3utils_flutter/engine/flash_runner.dart';
 import 'package:x3utils_flutter/models.dart';
 
 /// A dump that never becomes a backup must not be able to occupy a real backup
@@ -19,9 +19,9 @@ import 'package:x3utils_flutter/models.dart';
 /// Replays scripted OpenOCD output AND writes the bytes a real dump would
 /// leave at the path in the command line, so the staging/rename behavior can be
 /// exercised without hardware.
-class _DumpingRunner extends OpenOcdRunner {
+class _DumpingRunner extends FlashRunner {
   _DumpingRunner({required this.lines, required this.exitCode, this.bytes})
-    : super(OpenOcdPaths('openocd', 'scripts'));
+    : super(BackendPaths('openocd', 'scripts'));
 
   final List<String> lines;
   final int exitCode;
@@ -29,7 +29,7 @@ class _DumpingRunner extends OpenOcdRunner {
   String? dumpPath;
 
   @override
-  Future<OpenOcdResult> run(
+  Future<FlashResult> run(
     List<String> args,
     void Function(String line) onLine,
   ) async {
@@ -41,16 +41,16 @@ class _DumpingRunner extends OpenOcdRunner {
       dumpPath = RegExp(r'\{(.+)\}').firstMatch(dump)!.group(1)!;
       File(dumpPath!).writeAsBytesSync(bytes!);
     }
-    final evidence = OpenOcdEvidence();
+    final evidence = FlashEvidence();
     for (final line in lines) {
       evidence.record(line);
       onLine(line);
     }
-    return OpenOcdResult(exitCode, evidence);
+    return FlashResult(exitCode, evidence);
   }
 
   @override
-  Future<OpenOcdResult> runRace(
+  Future<FlashResult> runRace(
     List<String> args, {
     required void Function(String line) onLine,
     required void Function(int attempt, RaceTier tier) onAttempt,

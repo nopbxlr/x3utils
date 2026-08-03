@@ -1,13 +1,13 @@
 import 'dart:async';
-import 'dart:io';
+import 'engine/io/io.dart';
 import 'dart:ui' show Color;
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'models.dart';
 import 'theme.dart';
-import 'engine/openocd_paths.dart';
-import 'engine/openocd_runner.dart';
+import 'engine/backend_paths.dart';
+import 'engine/flash_runner.dart';
 import 'engine/rdp_runner.dart';
 import 'engine/device_spec.dart';
 import 'engine/firmware.dart';
@@ -18,21 +18,21 @@ import 'engine/trash.dart';
 
 /// Drives the whole UI via a single StageState the hero binds to.
 class AppController extends ChangeNotifier {
-  AppController({@visibleForTesting OpenOcdRunner? runner}) {
+  AppController({@visibleForTesting FlashRunner? runner}) {
     if (runner != null) {
       _runner = runner;
-      openOcdStatus = 'ready';
+      backendStatus = 'ready';
       _loadPrefs();
       return;
     }
     try {
-      final paths = OpenOcdPaths.find();
-      _runner = OpenOcdRunner(paths);
+      final paths = BackendPaths.find();
+      _runner = FlashRunner(paths);
       _rdp = RdpRunner(paths);
-      openOcdStatus = 'ready';
+      backendStatus = 'ready';
     } catch (e) {
-      openOcdStatus = 'missing';
-      console.add('OpenOCD not found: $e');
+      backendStatus = 'missing';
+      console.add('ST-Link backend error: $e');
     }
     _loadPrefs();
   }
@@ -174,11 +174,11 @@ class AppController extends ChangeNotifier {
     if (dest != null) _log('== 2nd copy → $dest ==');
   }
 
-  OpenOcdRunner? _runner;
+  FlashRunner? _runner;
   RdpRunner? _rdp;
-  String openOcdStatus = 'checking';
+  String backendStatus = 'checking';
   bool _realRun = false;
-  String? _diagnosis; // a specific cause parsed from OpenOCD output this run
+  String? _diagnosis; // a specific cause parsed from the ST-Link backend output this run
   // Only the standard "Backup + Flash" remembers a bin. The advanced firmware
   // actions (Flash Only, Flash slot 0) never remember — cleared on every action
   // switch — so nothing stale or wrong-sized ever carries over.
@@ -631,7 +631,7 @@ class AppController extends ChangeNotifier {
       // Pack treats the selected .bin as the complete component payload.
       // Component formats and sizes differ (especially BMS/BLE), so it applies
       // only the common local-bin structural checks here. Neither ZIP3 source
-      // path reaches OpenOCD, so Tcl/Windows argv restrictions do not apply.
+      // path reaches the ST-Link backend, so Tcl/Windows argv restrictions do not apply.
       check = Firmware.validateLocalBin(path, requireSize: false);
     } else {
       check = _validateFirmwareFile(
@@ -873,7 +873,7 @@ class AppController extends ChangeNotifier {
   int autoRetryCountdown = 0; // seconds left before the next automatic press
   int autoRetryAttempt = 0; // automatic presses used since the last fresh run
   bool _sawTargetProgress = false; // this run reached target/operation progress
-  bool _cannotRun = false; // never launched (missing OpenOCD / unwired action)
+  bool _cannotRun = false; // never launched (missing the ST-Link backend / unwired action)
 
   bool get autoRetryArmed => _autoRetryTimer != null;
 
@@ -1284,7 +1284,7 @@ class AppController extends ChangeNotifier {
 
   Future<void> _dispatch({ConfirmFileReplace? confirmFileReplace}) async {
     // Pack / Unpack zip3 is offline — pure file→file work that never talks to
-    // the controller, so it runs before (and independent of) OpenOCD.
+    // the controller, so it runs before (and independent of) the ST-Link backend.
     if (actionId == 'make_zip3') {
       if (zip3WorkspacePage == Zip3WorkspacePage.unpack) {
         await _runUnpackZip3(confirmFileReplace: confirmFileReplace);
@@ -1296,9 +1296,9 @@ class AppController extends ChangeNotifier {
     final runner = _runner;
     if (runner == null) {
       _failCannotRun(
-        'OpenOCD missing',
+        'Backend error',
         'Cannot run ${action.name}',
-        'Bundled OpenOCD was not found. This build cannot talk to the controller.',
+        'The ST-Link backend is unavailable. This build cannot talk to the controller.',
       );
       return;
     }
@@ -1316,7 +1316,7 @@ class AppController extends ChangeNotifier {
           await _finishRealAfterHold(
             r.ok,
             action.okMsg,
-            'OpenOCD exited with code ${r.exitCode}. Check the console.',
+            'The flasher exited with code ${r.exitCode}. Check the console.',
           );
         }
       case 'dump':
@@ -1337,7 +1337,7 @@ class AppController extends ChangeNotifier {
         _failCannotRun(
           'Action unavailable',
           'Cannot run this action',
-          'This action is not wired to a real OpenOCD command.',
+          'This action is not wired to the flasher.',
         );
     }
   }
@@ -1361,7 +1361,7 @@ class AppController extends ChangeNotifier {
         StageState.warn,
         'Not supported',
         '${action.name} is not supported in Power-race',
-        'RDP/protection work needs a stable OpenOCD session. Use Default SWD, C45 Clone, or C45 Genuine instead.',
+        'RDP/protection work needs a stable ST-Link session. Use Default SWD, C45 Clone, or C45 Genuine instead.',
       );
       return;
     }
@@ -1411,7 +1411,7 @@ class AppController extends ChangeNotifier {
         countdownSeconds,
         yes: yes,
         onLine: (line) {
-          _onRealLine(line, mode.guided, driveOpenOcdProgress: false);
+          _onRealLine(line, mode.guided, driveProgress: false);
           if (line.toLowerCase().contains('missing config.sh')) {
             setupFailure = true;
             _setRunIssue('RDP toolkit: missing config.sh', priority: 4);
@@ -1480,7 +1480,7 @@ class AppController extends ChangeNotifier {
     if (low.contains('press enter to retry')) {
       _rdpRetryPending = true;
       lastConnect = 'FAIL';
-      final issue = _runIssue ?? 'OpenOCD: connection failed';
+      final issue = _runIssue ?? 'Flash error: connection failed';
       _set(
         StageState.fail,
         'Failed',
@@ -1522,10 +1522,10 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  /// Spawn OpenOCD, stream + parse its output, return the result (null if the
+  /// Spawn the ST-Link backend, stream + parse its output, return the result (null if the
   /// run was cancelled/superseded). Does NOT set the final ok/fail stage — the
   /// caller decides (dump validates the file, flash chains a backup, etc.).
-  Future<OpenOcdResult?> _runRealCore(
+  Future<FlashResult?> _runRealCore(
     List<String> args, {
     required bool guided,
     String? title,
@@ -1564,7 +1564,7 @@ class AppController extends ChangeNotifier {
       );
     }
 
-    OpenOcdResult result;
+    FlashResult result;
     try {
       if (race) {
         result = await runner.runRace(
@@ -1605,25 +1605,25 @@ class AppController extends ChangeNotifier {
         StageState.fail,
         'Failed',
         '${action.name} failed',
-        'Could not start OpenOCD: $e',
+        'Could not start the flasher: $e',
       );
       return null;
     }
     if (my != _token) return null;
     if (result.exitCode != 0 && _runIssue == null) {
-      _setRunIssue(_openOcdExitFallback(result.exitCode, args), priority: 2);
+      _setRunIssue(_exitFallback(result.exitCode, args), priority: 2);
     }
     _realRun = false;
     running = false;
     _stopRunClock(result.exitCode);
-    _log('== openocd exit ${result.exitCode} ==');
+    _log('== done · exit ${result.exitCode} ==');
     return result;
   }
 
   void _onRealLine(
     String line,
     bool guided, {
-    bool driveOpenOcdProgress = true,
+    bool driveProgress = true,
   }) {
     _log(line);
     final clean = line.replaceAll(_ansi, '').trim();
@@ -1631,11 +1631,11 @@ class AppController extends ChangeNotifier {
     if (low.contains('target halted')) {
       lastConnect = 'PASS';
     }
-    // The runners echo their own command line ('> openocd …', '> bash …') into
-    // this same stream, and those args carry user-chosen paths. A backup folder
-    // named 'verified' or 'dumped' must never read as target evidence: it would
-    // disarm the third hand before OpenOCD had even started, invisibly and for
-    // every run. Only real target output counts.
+    // The runner echoes op progress ('dumped', 'wrote', …) into this same
+    // stream, and file paths carry user-chosen names. A backup folder named
+    // 'verified' or 'dumped' must never read as target evidence: it would
+    // disarm the third hand before the flash had even started, invisibly and
+    // for every run. Only real target output counts.
     final fromTarget = !clean.startsWith('> ');
     // Sticky for the whole run: _finishReal overwrites lastConnect with FAIL
     // on ANY failure, so it cannot tell "never connected" from "connected,
@@ -1644,13 +1644,13 @@ class AppController extends ChangeNotifier {
     // erase or write failure eligible for unattended repetition.
     if (fromTarget) _sawTargetProgress |= hasTargetProgressEvidence(low);
     _diagnose(low);
-    _surfaceOpenOcdIssue(clean, low);
-    if (driveOpenOcdProgress && fromTarget) _advanceOpenOcdStage(low);
+    _surfaceIssue(clean, low);
+    if (driveProgress && fromTarget) _advanceStage(low);
     if (guided) _parseGuided(line, low);
   }
 
-  void _surfaceOpenOcdIssue(String clean, String low) {
-    final issue = _openOcdIssueText(clean, low);
+  void _surfaceIssue(String clean, String low) {
+    final issue = _issueText(clean, low);
     if (issue != null) {
       _setRunIssue(issue, priority: low.contains('[fail]') ? 3 : 1);
     }
@@ -1668,70 +1668,69 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  String _openOcdExitFallback(int exitCode, List<String> args) {
+  String _exitFallback(int exitCode, List<String> args) {
     final joined = args.join(' ').toLowerCase();
-    if (actionId == 'check') return 'OpenOCD: connection check failed';
+    if (actionId == 'check') return 'Flash error: connection check failed';
     // Order matters: a dump/flash command line ALSO carries `flash probe`, so
     // the specific work has to be matched before the probe, or every failed
     // dump reports the connection-check wording.
-    if (joined.contains('dump_image')) return 'OpenOCD: dump did not complete';
+    if (joined.contains('dump_image')) return 'Flash error: dump did not complete';
     if (joined.contains('do_flash_and_verify') ||
         joined.contains('flash erase') ||
         joined.contains('flash write') ||
         joined.contains('write_image')) {
-      return 'OpenOCD: flash did not complete';
+      return 'Flash error: flash did not complete';
     }
     if (joined.contains('flash probe')) {
-      return 'OpenOCD: connection check failed';
+      return 'Flash error: connection check failed';
     }
-    return 'OpenOCD: failed with exit $exitCode';
+    return 'Flash error: failed with exit $exitCode';
   }
 
-  String? _openOcdIssueText(String clean, String low) {
+  String? _issueText(String clean, String low) {
     if (clean.isEmpty) return null;
-    if (low.contains('shutdown error')) return 'OpenOCD: shutdown error';
+    if (low.contains('shutdown error')) return 'Flash error: shutdown error';
     if (low.contains('write protected') ||
         low.contains('read out protection')) {
-      return 'OpenOCD: target is protected';
+      return 'Flash error: target is protected';
     }
     if (low.contains('timed out') || low.contains('timeout')) {
-      return 'OpenOCD: timeout';
+      return 'Flash error: timeout';
     }
-    if (low.contains('open failed')) return 'OpenOCD: open failed';
-    if (low.contains('unable to open')) return 'OpenOCD: unable to open';
+    if (low.contains('open failed')) return 'Flash error: open failed';
+    if (low.contains('unable to open')) return 'Flash error: unable to open';
     if (low.contains('adapter init failed')) {
-      return 'OpenOCD: adapter init failed';
+      return 'Flash error: adapter init failed';
     }
     if (low.contains('init mode failed')) {
-      return 'OpenOCD: init mode failed';
+      return 'Flash error: init mode failed';
     }
     if (low.contains('unable to connect to the target')) {
-      return 'OpenOCD: unable to connect to target';
+      return 'Flash error: unable to connect to target';
     }
-    if (low.contains('no device found')) return 'OpenOCD: no device found';
+    if (low.contains('no device found')) return 'Flash error: no device found';
     if (low.contains('target not halted')) {
-      return 'OpenOCD: target not halted';
+      return 'Flash error: target not halted';
     }
     if (low.contains('[fail]')) {
       final idx = low.indexOf('[fail]');
-      return 'OpenOCD: ${clean.substring(idx + 6).trim()}';
+      return 'Flash error: ${clean.substring(idx + 6).trim()}';
     }
-    if (low.contains('verify failed')) return 'OpenOCD: verify failed';
-    if (low.contains('erase failed')) return 'OpenOCD: erase failed';
-    if (low.contains('write failed')) return 'OpenOCD: write failed';
+    if (low.contains('verify failed')) return 'Flash error: verify failed';
+    if (low.contains('erase failed')) return 'Flash error: erase failed';
+    if (low.contains('write failed')) return 'Flash error: write failed';
     if (low.startsWith('error:')) {
-      return 'OpenOCD: ${clean.substring(6).trim()}';
+      return 'Flash error: ${clean.substring(6).trim()}';
     }
     if (low.contains(' error:')) {
       final idx = low.indexOf(' error:');
-      return 'OpenOCD: ${clean.substring(idx + 7).trim()}';
+      return 'Flash error: ${clean.substring(idx + 7).trim()}';
     }
     return null;
   }
 
-  /// Classify known OpenOCD error lines so the failure message names the real
-  /// cause instead of the generic contact hint. (Expandable, like the WinForms
-  /// ClassifyOpenOcdLine.) First-set wins for the run.
+  /// Classify known ST-Link error lines so the failure message names the real
+  /// cause instead of the generic contact hint. First-set wins for the run.
   void _diagnose(String low) {
     if (_diagnosis != null) return;
     if (low.contains('write protected') ||
@@ -1742,7 +1741,7 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  /// Drive the C45 hold/countdown/release stages from OpenOCD's guided prompts
+  /// Drive the C45 hold/countdown/release stages from the ST-Link backend's guided prompts
   /// (ported from the WinForms HandleCloneC45Prompt string matches).
   void _parseGuided(String line, String low) {
     if (low.contains('hold a wire between') ||
@@ -1911,19 +1910,19 @@ class AppController extends ChangeNotifier {
     RaceTier.nearCatch => 'Almost — reached the core, keep holding.',
     RaceTier.adapterGone => 'ST-LINK not seen — check the probe / USB.',
     RaceTier.timedOut =>
-      'OpenOCD stalled — power-cycle and try the next catch.',
+      'Probe stalled — power-cycle and try the next catch.',
   };
 
-  /// Any live OpenOCD marker shows the busy surface and keeps the race watchdog
+  /// Any live the ST-Link backend marker shows the busy surface and keeps the race watchdog
   /// fed. Markers are not told apart; the eyebrow is per-action, not per-stage.
-  void _advanceOpenOcdStage(String low) {
+  void _advanceStage(String low) {
     if (hasTargetProgressEvidence(low)) {
       _lastProgressAt = DateTime.now();
-      _showOpenOcdProgress();
+      _showProgress();
     }
   }
 
-  void _showOpenOcdProgress({String? eyebrow}) {
+  void _showProgress({String? eyebrow}) {
     if (stage == StageState.hold ||
         stage == StageState.count ||
         stage == StageState.release) {
@@ -1950,32 +1949,32 @@ class AppController extends ChangeNotifier {
     _ => 'Working',
   };
 
-  bool _dumpConfirmed(OpenOcdResult r) => r.ok && r.evidence.dumped;
+  bool _dumpConfirmed(FlashResult r) => r.ok && r.evidence.dumped;
 
-  bool _flashConfirmed(OpenOcdResult r) =>
+  bool _flashConfirmed(FlashResult r) =>
       r.ok && r.evidence.wrote && r.evidence.verified;
 
-  String _dumpFailMessage(OpenOcdResult r) {
+  String _dumpFailMessage(FlashResult r) {
     if (r.ok && !r.evidence.dumped) {
-      return 'OpenOCD exited successfully, but a complete dump was not confirmed. Retry required.';
+      return 'The operation completed, but a complete dump was not confirmed. Retry required.';
     }
     return 'Dump failed (exit ${r.exitCode}). Check the console.';
   }
 
-  String _flashFailMessage(OpenOcdResult r) {
+  String _flashFailMessage(FlashResult r) {
     if (r.ok && r.evidence.wrote && !r.evidence.verified) {
       return 'Flash wrote data, but verification was not confirmed. Retry required.';
     }
     if (r.ok && !r.evidence.wrote) {
-      return 'OpenOCD exited successfully, but no flash write was confirmed. Retry required.';
+      return 'The operation completed, but no flash write was confirmed. Retry required.';
     }
     return 'Flash failed (exit ${r.exitCode}). Nothing verified — check the console.';
   }
 
-  Future<void> _runDump(OpenOcdRunner runner, bool guided) async {
+  Future<void> _runDump(FlashRunner runner, bool guided) async {
     final staged = _stagedDumpPath();
     if (staged == null) return;
-    _showOpenOcdProgress(eyebrow: 'Backing up');
+    _showProgress(eyebrow: 'Backing up');
     _setInstruction('Reading the full 128 KB flash into a backup file...');
     final r = await _runRealCore(
       runner.dumpArgs(mode, countdownSeconds, staged),
@@ -1985,7 +1984,7 @@ class AppController extends ChangeNotifier {
       _noteStagedFile(staged); // cancelled mid-read: say what was left behind
       return;
     }
-    _showOpenOcdProgress(eyebrow: 'Validating');
+    _showProgress(eyebrow: 'Validating');
     if (!_dumpConfirmed(r)) {
       await _finishRealAfterHold(
         false,
@@ -2038,7 +2037,7 @@ class AppController extends ChangeNotifier {
     final finalPath =
         explicitPath ?? Firmware.newDumpPath(prefix: backupPrefix);
     final staged = Firmware.stagedDumpPath(finalPath);
-    final safe = Firmware.validateOpenOcdPath(staged);
+    final safe = Firmware.validateFlashPath(staged);
     if (!safe.ok) {
       _setInputFailure(
         'x3utils folder',
@@ -2115,7 +2114,7 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> _runFlash(
-    OpenOcdRunner runner,
+    FlashRunner runner,
     bool guided, {
     required bool backup,
     required bool slot0,
@@ -2162,7 +2161,7 @@ class AppController extends ChangeNotifier {
     if (backup) {
       final staged = _stagedDumpPath();
       if (staged == null) return;
-      _showOpenOcdProgress(eyebrow: 'Backing up');
+      _showProgress(eyebrow: 'Backing up');
       _setInstruction('Backing up the chip before flashing...');
       final b = await _runRealCore(
         runner.dumpArgs(mode, countdownSeconds, staged),
@@ -2268,7 +2267,7 @@ class AppController extends ChangeNotifier {
     final args = slot0
         ? runner.flashSlot0Args(mode, countdownSeconds, fw)
         : runner.flashArgs(mode, countdownSeconds, fw);
-    _showOpenOcdProgress(eyebrow: 'Flashing');
+    _showProgress(eyebrow: 'Flashing');
     _setInstruction(
       slot0
           ? 'Writing slot 0 only. Bootloader and identity stay untouched.'
@@ -2282,10 +2281,10 @@ class AppController extends ChangeNotifier {
       title: '${action.name}…',
     );
     if (r == null) return;
-    // OpenOCD has stopped, so the live timer is frozen. Keep the busy surface
+    // the ST-Link backend has stopped, so the live timer is frozen. Keep the busy surface
     // truthful while the evidence verdict and final result are being settled
     // instead of falling back to the stale "Flashing" phase label.
-    _showOpenOcdProgress(eyebrow: 'Validating');
+    _showProgress(eyebrow: 'Validating');
     final flashOk = _flashConfirmed(r);
     if (flashOk) {
       _setInstruction(
@@ -2318,11 +2317,11 @@ class AppController extends ChangeNotifier {
 
   /// SHU-compat: dump the chip → patch its own firmware → flash it back
   /// (mirrors flash_compat.bat; no user .bin — uses the chip's own image).
-  Future<void> _runCompat(OpenOcdRunner runner, bool guided) async {
+  Future<void> _runCompat(FlashRunner runner, bool guided) async {
     final (rawFinal, patched) = Firmware.newCompatPaths(prefix: backupPrefix);
     final staged = _stagedDumpPath(explicitPath: rawFinal);
     if (staged == null) return;
-    _showOpenOcdProgress(eyebrow: 'Backing up');
+    _showProgress(eyebrow: 'Backing up');
     _setInstruction('Reading the chip before patching...');
 
     // Step 1 — read the current firmware.
@@ -2366,7 +2365,7 @@ class AppController extends ChangeNotifier {
     _maybeSecondCopy(raw);
 
     // Step 2 — patch (pure Dart, no hardware).
-    _showOpenOcdProgress(eyebrow: 'Patching');
+    _showProgress(eyebrow: 'Patching');
     _setInstruction('Patching the SHU compatibility signature...');
     _log('== patching SHU-compat signature @ 0x1420 ==');
     final patch = CompatPatch.apply(raw, patched);
@@ -2382,12 +2381,12 @@ class AppController extends ChangeNotifier {
       return;
     }
     _log('== patched → $patched ==');
-    _showOpenOcdProgress(eyebrow: 'Patching');
+    _showProgress(eyebrow: 'Patching');
     _setInstruction('SHU patch applied. Ready to flash...');
     await Future.delayed(const Duration(milliseconds: 900));
 
     // Step 3 — flash the patched image back.
-    _showOpenOcdProgress(eyebrow: 'Flashing');
+    _showProgress(eyebrow: 'Flashing');
     _setInstruction('Flashing it back to the chip...');
     final f = await _runRealCore(
       runner.flashArgs(mode, countdownSeconds, patched),
@@ -2395,7 +2394,7 @@ class AppController extends ChangeNotifier {
       title: 'Flashing SHU-compatible firmware…',
     );
     if (f == null) return;
-    _showOpenOcdProgress(eyebrow: 'Validating');
+    _showProgress(eyebrow: 'Validating');
     final flashOk = _flashConfirmed(f);
     const okMsg =
         'SHU-compatible firmware flashed and verified. The original backup was saved.';

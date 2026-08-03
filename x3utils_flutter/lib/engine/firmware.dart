@@ -1,6 +1,7 @@
-import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:path/path.dart' as p;
 
+import 'io/io.dart';
 import 'windows_ansi_path.dart';
 
 class FirmwareCheck {
@@ -19,7 +20,7 @@ enum DumpVerdict {
   /// 128 KB of real, varied firmware. The only verdict that becomes a backup.
   ok,
 
-  /// OpenOCD wrote nothing at all.
+  /// The dump read nothing at all.
   missing,
 
   /// Short (or long) read. Identity lives in the last 4 KB at 0x1F000, so a
@@ -84,23 +85,23 @@ class Firmware {
   static const int slot0MaxPayloadMcu = 59388;
 
   static FirmwareCheck validate(String path, {bool requireSize = true}) {
-    return _validateBin(path, requireSize: requireSize, forOpenOcd: true);
+    return _validateBin(path, requireSize: requireSize, forFlash: true);
   }
 
   /// Structural validation for a bin read only by Dart. ZIP3 Slice and Pack
-  /// are offline file-to-file tools, so Tcl quoting and Windows OpenOCD argv
+  /// are offline file-to-file tools, so Tcl quoting and Windows the flasher argv
   /// conversion do not apply to their source path.
   static FirmwareCheck validateLocalBin(
     String path, {
     bool requireSize = true,
   }) {
-    return _validateBin(path, requireSize: requireSize, forOpenOcd: false);
+    return _validateBin(path, requireSize: requireSize, forFlash: false);
   }
 
   static FirmwareCheck _validateBin(
     String path, {
     required bool requireSize,
-    required bool forOpenOcd,
+    required bool forFlash,
   }) {
     if (path.trim().isEmpty) {
       return FirmwareCheck.fail('No firmware file selected.');
@@ -109,8 +110,8 @@ class Firmware {
     if (!f.existsSync()) {
       return FirmwareCheck.fail('Firmware file does not exist.');
     }
-    if (forOpenOcd) {
-      final safe = validateOpenOcdPath(path);
+    if (forFlash) {
+      final safe = validateFlashPath(path);
       if (!safe.ok) return safe;
     }
     if (p.extension(path).toLowerCase() != '.bin') {
@@ -130,14 +131,14 @@ class Firmware {
     return FirmwareCheck.valid;
   }
 
-  /// Path rules for anything handed to OpenOCD, in either direction. Checked on
-  /// dump DESTINATIONS too, before the run, so a backup folder OpenOCD cannot
+  /// Path rules for anything handed to the flasher, in either direction. Checked on
+  /// dump DESTINATIONS too, before the run, so a backup folder the flasher cannot
   /// write to fails while nothing has happened yet.
   ///
   /// Braces are the Tcl quoting characters the commands are built with, so they
   /// are refused everywhere.
   ///
-  /// The non-ASCII rule is WINDOWS ONLY. The bundled Windows OpenOCD is a mingw
+  /// The non-ASCII rule is WINDOWS ONLY. The bundled Windows the flasher is a mingw
   /// build whose CRT converts `argv` from UTF-16 down to the machine's ANSI
   /// codepage before `main()`. A path is safe only when Windows converts it
   /// through that codepage and back unchanged; this rejects best-fit mappings
@@ -145,13 +146,13 @@ class Firmware {
   /// Greek on CP1253 and Western European names on CP1252.
   ///
   /// It does not apply off Windows: POSIX paths are opaque bytes and `argv` is
-  /// unconverted. Measured 2026-07-29 against the bundled Linux OpenOCD — cfg
+  /// unconverted. Measured 2026-07-29 against the bundled Linux the flasher — cfg
   /// reads and file writes through `Prüfung/`, `Δοκιμή/`, a Cyrillic-homoglyph
   /// directory and an emoji directory all succeeded. Applying it there refused
   /// every dump for a user like `/home/Jörg`, whose `~/x3utils` root carries the
   /// username, and refused firmware picked from their own home as well.
   /// BETA3 BENCH SWITCH, off by default. Skips only the Windows ACP half so the
-  /// safe rule and unrestricted OpenOCD behavior can be compared. The
+  /// safe rule and unrestricted the flasher behavior can be compared. The
   /// controller stage-gates this before setting it; braces are NEVER skipped.
   static bool bypassWindowsPathSafety = false;
 
@@ -164,7 +165,7 @@ class Firmware {
     }
   }
 
-  static FirmwareCheck validateOpenOcdPath(String path) {
+  static FirmwareCheck validateFlashPath(String path) {
     if (path.contains('{') || path.contains('}')) {
       return FirmwareCheck.fail(
         'Path contains an unsupported character: { or }.',
@@ -186,13 +187,13 @@ class Firmware {
             final character = result.offendingCharacter;
             return FirmwareCheck.fail(
               "Windows code page ${result.codePage} cannot pass '$character' "
-              '(U+$hex) at character ${position + 1} to OpenOCD unchanged. '
+              '(U+$hex) at character ${position + 1} to the flasher unchanged. '
               'Choose a different folder or filename.',
             );
           }
           return FirmwareCheck.fail(
             'Windows code page ${result.codePage} cannot pass this path to '
-            'OpenOCD unchanged. Use a different folder or filename.',
+            'the flasher unchanged. Use a different folder or filename.',
           );
         }
       } catch (_) {
@@ -355,7 +356,7 @@ class Firmware {
   /// look legitimate in the folder and a `.bin` file picker would offer it.
   static const String partSuffix = '.part';
 
-  /// Where OpenOCD actually writes, given the eventual backup path.
+  /// Where the flasher actually writes, given the eventual backup path.
   static String stagedDumpPath(String finalPath) => '$finalPath$partSuffix';
 
   static bool isStagedDump(String path) => path.endsWith(partSuffix);
@@ -531,6 +532,7 @@ class Firmware {
   /// Redundant copy into the 2nd-copy dir (mirrors dump.bat).
   /// Returns the destination path, or null on failure (best-effort).
   static String? secondCopy(String srcPath) {
+    if (kIsWeb) return null; // redundant in the browser (same IndexedDB store)
     try {
       final dir = Directory(secondCopyDir())..createSync(recursive: true);
       final dest = p.join(dir.path, p.basename(srcPath));
@@ -618,14 +620,14 @@ class Firmware {
   }
 
   /// Check a folder the user is about to make the root, WHEN IT IS PICKED:
-  /// usable by OpenOCD (the path rules every dump destination under it inherits,
+  /// usable by the flasher (the path rules every dump destination under it inherits,
   /// non-ASCII among them on Windows only) and actually writable. The pre-run
   /// destination check stays as the safety net; this only moves the bad news to
   /// the moment of the choice.
   static FirmwareCheck validateRootFolder(String path) {
     final trimmed = path.trim();
     if (trimmed.isEmpty) return FirmwareCheck.fail('Choose a folder.');
-    final safe = validateOpenOcdPath(trimmed);
+    final safe = validateFlashPath(trimmed);
     if (!safe.ok) return safe;
     try {
       final dir = Directory(trimmed)..createSync(recursive: true);
@@ -644,11 +646,12 @@ class Firmware {
   // ── UI display labels ─────────────────────────────────────────────────────
   // Real absolute paths: with one root that the settings panel can show and
   // reveal, a hint no longer has to stand in for a path the app kept to itself.
-  static String get backupDirLabel => _path('backup');
-  static String get packedZip3DirLabel => _path('packed_zip3');
-  static String get unpackedZip3DirLabel => _path('unpacked_zip3');
-  static String get logsDirLabel => _path('logs');
+  static String get backupDirLabel => kIsWeb ? 'browser storage' : _path('backup');
+  static String get packedZip3DirLabel => kIsWeb ? 'browser storage' : _path('packed_zip3');
+  static String get unpackedZip3DirLabel => kIsWeb ? 'browser storage' : _path('unpacked_zip3');
+  static String get logsDirLabel => kIsWeb ? 'browser storage' : _path('logs');
   static String get secondCopyLabel {
+    if (kIsWeb) return 'A copy is kept in your browser';
     if (Platform.isWindows) return r'%LOCALAPPDATA%\x3utils_backup';
     if (Platform.isMacOS) return '~/Library/Application Support/x3utils_backup';
     return r'~/.x3utils_backup';

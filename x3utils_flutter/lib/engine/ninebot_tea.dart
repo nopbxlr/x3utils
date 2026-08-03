@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'io/io.dart';
 import 'dart:typed_data';
 
 /// Dart port of ScooterHacking's NinebotTEA (`ninebottea/ninebottea.py`):

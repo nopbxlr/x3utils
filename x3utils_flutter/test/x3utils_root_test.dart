@@ -5,8 +5,8 @@ import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:x3utils_flutter/app_controller.dart';
 import 'package:x3utils_flutter/engine/firmware.dart';
-import 'package:x3utils_flutter/engine/openocd_paths.dart';
-import 'package:x3utils_flutter/engine/openocd_runner.dart';
+import 'package:x3utils_flutter/engine/backend_paths.dart';
+import 'package:x3utils_flutter/engine/flash_runner.dart';
 import 'package:x3utils_flutter/engine/windows_ansi_path.dart';
 
 /// One x3utils folder holds everything a run produces. These pin the parts a
@@ -15,17 +15,17 @@ import 'package:x3utils_flutter/engine/windows_ansi_path.dart';
 /// is never read again — its string meant "where dumps go", not "the parent
 /// of backup/", so adopting it would move a user's backups a level down.
 
-class _IdleRunner extends OpenOcdRunner {
-  _IdleRunner() : super(OpenOcdPaths('openocd', 'scripts'));
+class _IdleRunner extends FlashRunner {
+  _IdleRunner() : super(BackendPaths('openocd', 'scripts'));
 
   @override
-  Future<OpenOcdResult> run(
+  Future<FlashResult> run(
     List<String> args,
     void Function(String line) onLine,
-  ) async => OpenOcdResult(1, OpenOcdEvidence());
+  ) async => FlashResult(1, FlashEvidence());
 
   @override
-  Future<OpenOcdResult> runRace(
+  Future<FlashResult> runRace(
     List<String> args, {
     required void Function(String line) onLine,
     required void Function(int attempt, RaceTier tier) onAttempt,
@@ -111,15 +111,15 @@ void main() {
     });
   });
 
-  group('validateOpenOcdPath', () {
+  group('validateFlashPath', () {
     // The two halves are scoped differently ON PURPOSE, and a later change
     // could quietly re-merge them. Braces are Tcl quoting, so they break
     // everywhere. Non-ASCII is a Windows argv/codepage problem only: applying
     // it off Windows refused every dump for a user whose home carries a
     // non-ASCII name, since ~/x3utils is built from it.
     test('refuses braces on every platform', () {
-      expect(Firmware.validateOpenOcdPath('/tmp/a{b}/fw.bin').ok, isFalse);
-      expect(Firmware.validateOpenOcdPath('/tmp/a}b/fw.bin').ok, isFalse);
+      expect(Firmware.validateFlashPath('/tmp/a{b}/fw.bin').ok, isFalse);
+      expect(Firmware.validateFlashPath('/tmp/a}b/fw.bin').ok, isFalse);
     });
 
     test('Windows follows its exact ACP verdict; Unix accepts non-ASCII', () {
@@ -131,12 +131,12 @@ void main() {
         final expected = Platform.isWindows
             ? WindowsAnsiPath.check(path).exact
             : true;
-        expect(Firmware.validateOpenOcdPath(path).ok, expected, reason: path);
+        expect(Firmware.validateFlashPath(path).ok, expected, reason: path);
       }
     });
 
     test('plain ASCII passes everywhere', () {
-      expect(Firmware.validateOpenOcdPath('/home/a/x3utils/d.bin').ok, isTrue);
+      expect(Firmware.validateFlashPath('/home/a/x3utils/d.bin').ok, isTrue);
     });
 
     // The beta bench switch governs ONE half. Braces are a Tcl quoting rule
@@ -148,14 +148,14 @@ void main() {
       test('lets non-ASCII through when on', () {
         Firmware.bypassWindowsPathSafety = true;
         expect(
-          Firmware.validateOpenOcdPath('/home/Jörg/x3utils/dump.bin').ok,
+          Firmware.validateFlashPath('/home/Jörg/x3utils/dump.bin').ok,
           isTrue,
         );
       });
 
       test('never lets braces through', () {
         Firmware.bypassWindowsPathSafety = true;
-        expect(Firmware.validateOpenOcdPath('/tmp/a{b}/fw.bin').ok, isFalse);
+        expect(Firmware.validateFlashPath('/tmp/a{b}/fw.bin').ok, isFalse);
       });
 
       test('defaults to off', () {
