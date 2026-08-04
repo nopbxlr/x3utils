@@ -126,8 +126,19 @@ class FlashRunner {
       return FlashResult(0, ev);
     } catch (e) {
       onLine('[error] $e');
+      await _recover(); // drop the (possibly wedged) probe so a retry reconnects
       return FlashResult(1, ev);
     }
+  }
+
+  /// After a failure the ST-Link/target link can be in a bad state (e.g. a
+  /// mid-command reset), and libusb then fails every transfer on the reused
+  /// handle. Tear the connection down so the next attempt re-opens the probe
+  /// and re-inits it from scratch.
+  Future<void> _recover() async {
+    try {
+      await _session.disconnect();
+    } catch (_) {}
   }
 
   Future<FlashResult> runRace(
@@ -152,6 +163,7 @@ class FlashRunner {
       return FlashResult(0, ev);
     } catch (e) {
       onLine('[race] $e');
+      await _recover();
       return FlashResult(-1, ev);
     }
   }

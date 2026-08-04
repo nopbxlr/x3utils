@@ -54,6 +54,10 @@ class RdpRunner {
       return 0;
     } catch (e) {
       onLine('[rdp] error: $e');
+      // Drop a possibly-wedged probe so the next attempt reconnects fresh.
+      try {
+        await _session.disconnect();
+      } catch (_) {}
       return 3;
     }
   }
