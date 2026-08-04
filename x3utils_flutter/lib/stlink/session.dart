@@ -130,12 +130,31 @@ class StlinkSession {
 
   Future<TargetInfo> _finishAttach(int idcode) async {
     final p = _probe!;
+    await _freezeWatchdogs(p);
     _target = await detectTarget(p, _core!);
     _driver = _target!.family == 'unknown' ? null : _makeDriver();
     _emit('[target] ${_target!.name}');
     final voltage = await p.getTargetVoltage().catchError((_) => null);
     if (voltage != null) _emit('[target] Vtarget ${voltage.toStringAsFixed(2)} V');
     return _target!;
+  }
+
+  /// Freeze the independent + window watchdogs (and low-power modes) while the
+  /// core is halted, so a running IWDG/WWDG from the target's own firmware can't
+  /// reset the chip mid-flash. Mirrors OpenOCD's `mmw 0xE0042004 0x00000307 0`
+  /// (DBG_WWDG_STOP | DBG_IWDG_STOP | DBG_STANDBY | DBG_STOP | DBG_SLEEP). The
+  /// DBGMCU/DEBUG control register (0xE0042004, bit layout shared by STM32F1 and
+  /// AT32) is not reset by system reset, so setting it once on attach persists.
+  Future<void> _freezeWatchdogs(Stlink p) async {
+    const dbgmcuCr = 0xe0042004;
+    try {
+      final cur = await p.readDebugReg(dbgmcuCr);
+      await p.writeDebugReg(dbgmcuCr, cur | 0x307);
+      _emit('[debug] watchdogs frozen while halted (DBGMCU_CR |= 0x307)');
+    } catch (_) {
+      // Non-fatal: some parts may gate DBGMCU behind a clock; flashing may still
+      // work if no watchdog is running.
+    }
   }
 
   Future<void> _waitContinue() {
