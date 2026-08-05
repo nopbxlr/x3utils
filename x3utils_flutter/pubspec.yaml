@@ -55,6 +55,13 @@ dependencies:
   archive: ^4.0.0
   crypto: ^3.0.0
 
+  # Pure-Dart ST-Link/SWD flashing & debugging stack — the standalone library
+  # extracted from what used to live in lib/stlink/. WebUSB on web, libusb on
+  # desktop. See lib/stlink/session.dart for the thin adapter.
+  swdart:
+    git:
+      url: https://github.com/nopbxlr/swdart.git
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

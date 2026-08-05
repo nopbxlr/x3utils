@@ -421,6 +421,15 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.4.1"
+  swdart:
+    dependency: "direct main"
+    description:
+      path: "."
+      ref: HEAD
+      resolved-ref: "74fb6a285df3aeae57305bc033480d1512bed50f"
+      url: "https://github.com/nopbxlr/swdart.git"
+    source: git
+    version: "0.1.0"
   term_glyph:
     dependency: transitive
     description:
