@@ -425,11 +425,11 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: "v0.1.1"
-      resolved-ref: dafeafc0472b8c73cfa8ac20eda6a76caa378769
+      ref: "v0.2.0"
+      resolved-ref: "03b51181936424f4e8584b4238e3c6b06f1244c8"
       url: "https://github.com/nopbxlr/swdart.git"
     source: git
-    version: "0.1.1"
+    version: "0.2.0"
   term_glyph:
     dependency: transitive
     description:
