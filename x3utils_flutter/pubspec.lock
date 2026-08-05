@@ -425,7 +425,7 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: HEAD
+      ref: "v0.1.0"
       resolved-ref: "74fb6a285df3aeae57305bc033480d1512bed50f"
       url: "https://github.com/nopbxlr/swdart.git"
     source: git
