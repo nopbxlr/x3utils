@@ -426,7 +426,7 @@ packages:
     description:
       path: "."
       ref: "v0.2.0"
-      resolved-ref: "03b51181936424f4e8584b4238e3c6b06f1244c8"
+      resolved-ref: cd0b33612788f079192ee79a340dc983afc42453
       url: "https://github.com/nopbxlr/swdart.git"
     source: git
     version: "0.2.0"
